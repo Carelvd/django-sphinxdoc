@@ -1,5 +1,5 @@
 ===============================================================
-django-sphinxdoc – Embed your Sphinx docs into your Django site
+django-sphinxdoc - Embed your Sphinx docs into your Django site
 ===============================================================
 
 This Django application allows you to integrate any `Sphinx

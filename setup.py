@@ -9,7 +9,7 @@ setup(
     description='Easily integrate Sphinx documentation into your website.',
     long_description=(open('README.txt').read() + '\n\n' +
                       open('CHANGES.txt').read() + '\n\n' +
-                      open('AUTHORS.txt').read()),
+                      open('AUTHORS.txt', encoding='utf-8').read()),
     url='https://bitbucket.org/sscherfke/django-sphinxdoc/',
     license='MIT',
     python_requires='>=3.6',
