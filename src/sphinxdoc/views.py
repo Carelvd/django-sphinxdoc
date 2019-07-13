@@ -164,6 +164,7 @@ class ProjectSearchView(SearchView):
             update_date = datetime.datetime.fromtimestamp(0)
 
         return {
+            'base_template': getattr(settings, 'SPHINXDOC_BASE_TEMPLATE', 'base.html'),
             'project': project,
             'env': env,
             'update_date': update_date,
