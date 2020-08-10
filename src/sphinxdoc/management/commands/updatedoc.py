@@ -147,6 +147,7 @@ class Command(BaseCommand):
 
                 # Get path relative to the build dir w/o file extension
                 relpath = os.path.relpath(filepath, path)[:-len(EXTENSION)]
+                urlpath = "/".join(relpath.split(os.path.sep)) # os.path.split() only splits off the stem.
 
                 # Some files have no title or body attribute
                 doc = json.load(open(filepath, 'r'))
@@ -163,7 +164,7 @@ class Command(BaseCommand):
                 # Finally create the Document
                 d = Document(
                     project=project,
-                    path=relpath,
+                    path=urlpath,
                     content=json.dumps(doc),
                     title=doc['title'],
                     body=doc['body'],
