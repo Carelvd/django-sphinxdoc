@@ -4,7 +4,7 @@ from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import ImproperlyConfigured
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404
-from django.utils.decorators import available_attrs
+# from django.utils.decorators import available_attrs # Commented Python 2 and 3 and Django 2.0 to 3.0 compatibility code
 
 from sphinxdoc.models import Project
 
@@ -16,7 +16,7 @@ def user_allowed_for_project(view_func):
     If the user is not allowed, the view will be redirected to the standard
     login page.
     """
-    @wraps(view_func, assigned=available_attrs(view_func))
+    @wraps(view_func) # , assigned=available_attrs(view_func) # Commented Python 2 and 3 and Django 2.0 to 3.0 compatibility code
     def _wrapped_view(request, *args, **kwargs):
         try:
             slug = kwargs['slug']
