@@ -2,18 +2,24 @@
 URL conf for django-sphinxdoc.
 
 """
-from django.conf.urls import url
+# from django.conf.urls import url
+
+try: 
+  from django.conf.urls import include, url as path, url as parx
+  from django.urls import reverse_lazy
+except ImportError:
+  from django.urls import include, path, re_path as parx
 
 from . import views
 
 
 urlpatterns = [
-    url(
+    parx(
         r'^$',
         views.OverviewList.as_view(),
         name='docs-list',
     ),
-    url(
+    parx(
         r'^(?P<slug>[\w-]+)/search/$',
         views.ProjectSearchView(),
         name='doc-search',
@@ -21,29 +27,29 @@ urlpatterns = [
     # These URLs have to be without the / at the end so that relative links in
     # static HTML files work correctly and that browsers know how to name files
     # for download
-    url(
+    parx(
         (r'^(?P<slug>[\w-]+)/(?P<type_>_images|_static|_downloads|_source)/'
          r'(?P<path>.+)$'),
         views.sphinx_serve,
     ),
-    url(
+    parx(
         r'^(?P<slug>[\w-]+)/_objects/$',
         views.objects_inventory,
         name='objects-inv',
     ),
-    url(
+    parx(
         r'^(?P<slug>[\w-]+)/$',
         views.documentation,
         {'path': ''},
         name='doc-index',
     ),
-    url(
+    parx(
         r'^(?P<slug>[\w-]+)/genindex/$',
         views.documentation,
         {'path': 'genindex'},
         name='doc-genindex',
     ),
-    url(
+    parx(
         r'^(?P<slug>[\w-]+)/(?P<path>.+)/$',
         views.documentation,
         name='doc-detail',
