@@ -15,7 +15,8 @@ from django.urls import reverse
 from django.views.decorators.cache import cache_page
 from django.views import generic
 from django.views.static import serve
-from haystack.views import SearchView
+from django.http import HttpRequest
+from haystack.generic_views import SearchView
 
 from sphinxdoc.decorators import user_allowed_for_project
 from sphinxdoc.forms import ProjectSearchForm
@@ -107,67 +108,43 @@ def sphinx_serve(request, slug, type_, path):
         path=path,
     )
 
-
 class ProjectSearchView(SearchView):
-    """Inherits :class:`~haystack.views.SearchView` and handles a search
-    request and displays the results as a simple list.
+    template_name = 'sphinxdoc/search.html'
+    form_class = ProjectSearchForm
 
-    """
-    def __init__(self, form_class=ProjectSearchForm):
-        SearchView.__init__(self, form_class=form_class,
-                            template='sphinxdoc/search.html')
+    def get_queryset(self):
+        # Optionally filter by slug if needed
+        slug = self.kwargs.get('slug')
+        queryset = super().get_queryset()
+        if slug:
+            # Filter your queryset by slug if your index supports it
+            queryset = queryset.filter(project__slug=slug)
+        return queryset
 
-    def __call__(self, request, slug):
-        self.slug = slug
-        try:
-            return SearchView.__call__(self, request)
-        except PermissionDenied:
-            if request.user.is_authenticated:
-                raise
-            path = request.build_absolute_uri()
-            return redirect_to_login(path)
-
-    def build_form(self):
-        """Instantiates the form that should be used to process the search
-        query.
-
-        """
-        return self.form_class(self.request.GET, slug=self.slug,
-                               searchqueryset=self.searchqueryset,
-                               load_all=self.load_all)
-
-    def extra_context(self):
-        """Adds the *project*, the contents of ``globalcontext.json`` (*env*)
-        and the *update_date* as extra context.
-
-        """
-        project = Project.objects.get(slug=self.slug)
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        slug = self.kwargs.get('slug')
+        project = Project.objects.get(slug=slug)
         if not project.is_allowed(self.request.user):
             raise PermissionDenied
 
         try:
-            env = json.load(open(os.path.join(project.path, BUILDDIR,
-                                              'globalcontext.json'), 'r'))
+            env = json.load(open(os.path.join(project.path, BUILDDIR, 'globalcontext.json'), 'r'))
         except IOError:
-            # It is possible that file does not exist anymore (for example,
-            # because make clean to prepare for running make again), we do not
-            # want to display an error to the user in this case
             env = None
 
         try:
             update_date = datetime.datetime.fromtimestamp(os.path.getmtime(
                 os.path.join(project.path, BUILDDIR, 'last_build')))
         except OSError:
-            # It is possible that file does not exist anymore (for example,
-            # because make clean to prepare for running make again), we do not
-            # want to display an error to the user in this case
             update_date = datetime.datetime.fromtimestamp(0)
 
-        return {
+        context.update({
             'project': project,
             'env': env,
             'update_date': update_date,
-        }
+        })
+        return context
 
 
 class OverviewList(generic.TemplateView):

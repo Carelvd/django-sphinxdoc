@@ -49,7 +49,7 @@ Install the required database tables with:
 
 In order get Haystack working with django-sphinxdoc, you only need to executes
 the steps under `Configuration
-<http://docs.haystacksearch.org/dev/tutorial.html#configuration>`_ in the
+<https://django-haystack.readthedocs.io/en/master/tutorial.html#configuration>`_ in the
 Haystack tutorial (if not already done). You don’t need to create any search
 indexes, views or templates yourself.
 
