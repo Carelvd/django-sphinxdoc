@@ -10,22 +10,27 @@ except ImportError :
     from django.utils.translation import gettext_lazy as _
 from django.urls import reverse
 from django.utils.text import slugify
-
+from django.utils import timezone
 from sphinxdoc.validators import validate_isdir
 
+
 class Project(models.Model):
-    """Represents a Sphinx project. Each ``Project`` has a name, a slug and
+    """\
+    Project
+    
+    Represents a Sphinx project. Each ``Project`` has a name, a slug and
     a path to the root directory of a Sphinx project (where Sphinx'
     ``conf.py``) is located).
-
     """
     name = models.CharField(max_length=100)
     slug = models.SlugField(unique=True, blank=True, max_length=100, editable=False,
                             help_text=_('Used in the URL for the project. '
                                         'Must be unique.'))
     path = models.CharField(max_length=255, validators=[validate_isdir],
-                            help_text=_('Directory that contains Sphinx\' '
-                                        '<tt>conf.py</tt>.'))
+                            help_text=_('Directory that contains Sphinx source and <tt>conf.py</tt>.'))
+    created = models.DateTimeField(auto_now_add=True)
+    # updated = models.DateTimeField(auto_now=True)
+    deleted = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = _('project')
@@ -46,7 +51,7 @@ class Project(models.Model):
         return True
 
     def save(self, *args, **kwargs):
-        if not self.slug: # Slug Unset
+        if not self.slug: # Set the slug from the title if unset
             slug = slugify(self.title)
             mask = slug
             cntr = 0
@@ -59,8 +64,16 @@ class Project(models.Model):
     def get_absolute_url(self):
         return reverse('doc-index', kwargs={'slug': self.slug})
 
+    def delete(self, *args, **kwargs):
+        self.deleted = timezone.now()
+        self.save()
+
+
 class Document(models.Model):
-    """Represents a JSON encoded Sphinx document. The attributes ``title`` and
+    """\
+    Document
+
+    Represents a JSON encoded Sphinx document. The attributes ``title`` and
     ``body`` dubicate the corresponding keys in ``content`` and are used for
     the Haystack search.
     """
