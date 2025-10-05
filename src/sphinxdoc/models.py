@@ -9,9 +9,9 @@ try :
 except ImportError :
     from django.utils.translation import gettext_lazy as _
 from django.urls import reverse
+from django.utils.text import slugify
 
 from sphinxdoc.validators import validate_isdir
-
 
 class Project(models.Model):
     """Represents a Sphinx project. Each ``Project`` has a name, a slug and
@@ -20,7 +20,7 @@ class Project(models.Model):
 
     """
     name = models.CharField(max_length=100)
-    slug = models.SlugField(unique=True,
+    slug = models.SlugField(unique=True, blank=True, max_length=100, editable=False,
                             help_text=_('Used in the URL for the project. '
                                         'Must be unique.'))
     path = models.CharField(max_length=255, validators=[validate_isdir],
@@ -45,15 +45,24 @@ class Project(models.Model):
             return False
         return True
 
+    def save(self, *args, **kwargs):
+        if not self.slug: # Slug Unset
+            slug = slugify(self.title)
+            mask = slug
+            cntr = 0
+            while Project.objects.filter(slug=mask).exists():
+                cntr += 1
+                mask = f"{slug}-{num}"
+            self.slug = mask
+        super().save(*args, **kwargs)
+
     def get_absolute_url(self):
         return reverse('doc-index', kwargs={'slug': self.slug})
-
 
 class Document(models.Model):
     """Represents a JSON encoded Sphinx document. The attributes ``title`` and
     ``body`` dubicate the corresponding keys in ``content`` and are used for
     the Haystack search.
-
     """
     project = models.ForeignKey(Project, on_delete=models.PROTECT)
     path = models.CharField(max_length=255)
