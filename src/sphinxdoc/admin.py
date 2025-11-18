@@ -9,9 +9,9 @@ from sphinxdoc.models import Project, Document
 
 class ProjectAdmin(admin.ModelAdmin):
     """Admin interface for :class:`~sphinxdoc.models.Project`."""
-    list_display = ('name', 'path',)
-    prepopulated_fields = {'slug': ('name',)}
-
+    list_display = ('name', 'slug', 'repo', 'root') # Uses name of the field not the model attribute
+    prepopulated_fields = {'slug': ('name',)} # Uses name of the field not the model attribute
+    change_form_template = 'admin/sphinxdoc/project/change_form.html'
 
 class DocumentAdmin(admin.ModelAdmin):
     """Admin interface for :class:`~sphinxdoc.models.Document`.
@@ -20,7 +20,7 @@ class DocumentAdmin(admin.ModelAdmin):
     the management command.
 
     """
-    list_display = ('path', 'title', 'project',)
+    list_display = ('name', 'path', 'project',)
     list_filter = ('project', )
 
 

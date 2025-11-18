@@ -16,7 +16,7 @@ setup(
         'Django>=2.0',
         'django-haystack>=2.8.0',
     ],
-    packages=find_packages(where='src'),
+    packages=find_packages(where='src'), # , exclude=('tests',)
     package_dir={'': 'src'},
     include_package_data=True,
     classifiers=[

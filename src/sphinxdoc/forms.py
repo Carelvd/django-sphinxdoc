@@ -4,7 +4,7 @@ Forms for the sphinxdoc app.
 """
 from haystack.forms import SearchForm
 from haystack.query import SearchQuerySet
-
+from django.forms import ModelForm
 from sphinxdoc.models import Project, Document
 
 
@@ -25,3 +25,8 @@ class ProjectSearchForm(SearchForm):
         ).models(Document).filter(project=project.id)
 
         SearchForm.__init__(self, *args, **kwargs)
+
+class ProjectAdminForm(ModelForm):
+    class Meta:
+        model = Project
+        fields = "__all__"

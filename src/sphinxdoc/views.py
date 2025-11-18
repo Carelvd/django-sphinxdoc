@@ -26,9 +26,14 @@ BUILDDIR = os.path.join('_build', 'json')
 CACHE_MINUTES = getattr(settings, 'SPHINXDOC_CACHE_MINUTES', 5)
 
 
+# class Index(TemplateView):
+    # template_name = "sphinxdoc/index.html"
+    # def get_template_name(self): 
+    #     return super().get_template_name() # OR super().get_template_names() ?
+
 @user_allowed_for_project
 @cache_page(60 * CACHE_MINUTES)
-def documentation(request, slug, path):
+def documentation(request, slug, path, format="html"):
     """Displays the contents of a :class:`sphinxdoc.models.Document`.
 
     ``slug`` specifies the project, the document belongs to, ``path`` is the
@@ -53,8 +58,8 @@ def documentation(request, slug, path):
     )
 
     try:
-        env = json.load(open(os.path.join(project.path, BUILDDIR,
-                                          'globalcontext.json'), 'r'))
+        env = json.load(open(project.target_path / 'json' / 'globalcontext.json', 'r')) 
+        # Originally : env = json.load(open(os.path.join(project.source, BUILDDIR, 'globalcontext.json'), 'r'))
     except IOError:
         # It is possible that file does not exist anymore (for example, because
         # make clean to prepare for running make again), we do not want to
@@ -62,8 +67,8 @@ def documentation(request, slug, path):
         env = None
 
     try:
-        update_date = datetime.datetime.fromtimestamp(os.path.getmtime(
-            os.path.join(project.path, BUILDDIR, 'last_build')))
+        update_date = datetime.datetime.fromtimestamp( os.path.getmtime(project.target_path / 'json' / 'lastbuild') )
+        # Originally: update_date = datetime.datetime.fromtimestamp(os.path.getmtime(os.path.join(project.source, BUILDDIR, 'last_build')))
     except OSError:
         # It is possible that file does not exist anymore (for example, because
         # make clean to prepare for running make again), we do not want to
@@ -89,7 +94,7 @@ def objects_inventory(request, slug):
     project = get_object_or_404(Project, slug=slug)
     response = serve(
         request,
-        document_root=os.path.join(project.path, BUILDDIR),
+        document_root=os.path.join(project.source, BUILDDIR),
         path='objects.inv',
     )
     response['Content-Type'] = 'text/plain'
@@ -103,9 +108,47 @@ def sphinx_serve(request, slug, type_, path):
     project = get_object_or_404(Project, slug=slug)
     return serve(
         request,
-        document_root=os.path.join(project.path, BUILDDIR, type_),
+        document_root=os.path.join(project.source, BUILDDIR, type_),
         path=path,
     )
+
+def document(request, path, format = "html"):
+    """\
+    Document
+
+    Returns the requested document.
+
+    TODO: Merge this with the `documentation` function above
+    """
+    if request.GET.get('action') == "edit":
+        return redirect("edit", path=path)
+    if 'application/json' in request.META.get('HTTP_ACCEPT', '') or format in ("json","fjson"): # HTTP_ACCEPT="application/json"
+        path = Path(path)
+        root = Path(__file__).parent/"data"/"json"
+        file = (root/path).resolve()
+        if file.relative_to(root) == path:
+            if file.suffix in ("", ".json", "fjson"):
+                with file.with_suffix(".fjson").open() as f:
+                    return JsonResponse(json.load(f))
+    else: # HTTP_ACCEPT="text/html|html"
+        path = Path(path)
+        root = Path(__file__).parent/"data"/"html"
+        file = (root/path).resolve()
+        if file.relative_to(root) == path:
+            # return render(request, root/path.with_suffix(".html"))
+            # return FileResponse(file)
+            # return render(request, file)
+            if file.suffix == "" or file.suffix == ".html":
+                with file.with_suffix(".html").open() as f:
+                    return HttpResponse(f.read())
+            else :
+                return serve(
+                    request,
+                    document_root=root,
+                    path=path,
+                ) # See https://stackoverflow.com/a/21805592
+        else: 
+            raise HttpResponseForbidden("Not Found")
 
 
 class ProjectSearchView(SearchView):
@@ -146,7 +189,7 @@ class ProjectSearchView(SearchView):
             raise PermissionDenied
 
         try:
-            env = json.load(open(os.path.join(project.path, BUILDDIR,
+            env = json.load(open(os.path.join(project.source, BUILDDIR,
                                               'globalcontext.json'), 'r'))
         except IOError:
             # It is possible that file does not exist anymore (for example,
@@ -156,7 +199,7 @@ class ProjectSearchView(SearchView):
 
         try:
             update_date = datetime.datetime.fromtimestamp(os.path.getmtime(
-                os.path.join(project.path, BUILDDIR, 'last_build')))
+                os.path.join(project.source, BUILDDIR, 'last_build')))
         except OSError:
             # It is possible that file does not exist anymore (for example,
             # because make clean to prepare for running make again), we do not
@@ -187,3 +230,136 @@ class OverviewList(generic.TemplateView):
     def get_project_list(self):
         qs = Project.objects.all().order_by('name')
         return [proj for proj in qs if proj.is_allowed(self.request.user)]
+
+
+
+def doctree(request, path = None):
+    """\
+    Doctree
+
+    Doctree accessa and package development
+    """
+    path = Path(path) if path else Path("")
+    root = Path(__file__).parent/"data"/"doctrees"
+    docs = root/"environment.pickle"
+    file = (root/path).resolve()
+    if docs.exists():
+        try:
+            with open(docs, 'rb') as f:
+                tree = pickle.load(f)
+
+            # At this point, the `environment` variable holds the Sphinx environment object.
+            # You can now inspect its contents.
+            print("Successfully loaded the Sphinx environment file.")
+            print("Type of the loaded object:", type(tree))
+
+            # The object contains various attributes about the documentation project.
+            # For example, to see the list of all documents:
+            if hasattr(tree, 'all_docs'):
+                print("\nFound the following documents:")
+                for docname in tree.all_docs:
+                    print(f"  - {docname}")
+            return HttpResponse("OK")
+        except (pickle.UnpicklingError, EOFError) as e:
+            print(f"Error unpickling the file: {e}")
+        except Exception as e:
+            print(f"An unexpected error occurred: {e}")
+    else:
+        raise Http404(f"File not found: {path}")
+
+def editor(request, path):
+    """\
+    Editor
+
+    Provides a simple editor for the file at the given path.
+    """
+    path = Path(path)
+    root = Path(__file__).parent/"docs"
+    file = (root/path).resolve()
+    if request.method == 'POST':
+        form = forms.EditorForm(request.POST, request.FILES)
+        if form.is_valid():
+            # print(form.cleaned_data['path'])
+            # source = request.FILES['text']
+            # target = ""
+            # # Read file content (in chunks for large files)
+            # for chunk in file.chunks():
+            #     target += chunk.decode('utf-8')  # Decode to string            
+            # # Render template with content for editing
+            # return render(request, 'cad/editor.html', {'text': target})
+            file = file.with_suffix(".rst")
+            with file.open("w") as f:
+                print(form.cleaned_data['text'])
+                f.write(form.cleaned_data['text'].replace('\r\n','\r'))
+            # Sphinx
+            return redirect("git", path=path)
+            # return resolve_url("docpath", path)
+    else:
+        if file.relative_to(root) == path:
+            if file.with_suffix(".rst").exists():
+                with file.with_suffix(".rst").open() as f:
+                    form = forms.EditorForm(initial={"text":f.read()})
+            else :
+                form = forms.EditorForm()     
+        else:
+            raise HttpResponseForbidden("Not Found")
+    return render(request, 'cad/editor.html', {'form': form})
+
+def git(request, path):
+    """\
+    Git add and/or commit
+
+    Triggers a git add or a git commit based on the current state of the file.
+    """
+    path = Path(path)
+    root = Path(__file__).parent/"docs"
+    file = (root/path).resolve()
+    file = file.with_suffix(".rst")
+    try:
+        print(Path(__file__).parent)
+        if committed := subprocess.run(
+                ["git", "status", "--porcelain", file],
+                cwd=Path(__file__).parent,
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip():
+            # print(file, committed)
+            # If there's output, it means the file is modified or untracked
+            if committed.startswith("??"):
+                # print(f"'{file}' is untracked. Adding to Git...")
+                subprocess.run(["git", "add", file], 
+                    cwd=Path(__file__).parent,
+                    check=True)
+                print(f"Staging created file '{file}'")
+                subprocess.run(["git", "commit", "-m", f"{file}\r\rCreated the file '{file}'"], 
+                    cwd=Path(__file__).parent,
+                    check=True)
+                print(f"Committed created file '{file}'")
+            else:
+                # print(f"'{file}' is modified. Staging changes...")
+                subprocess.run(["git", "add", file],
+                    cwd=Path(__file__).parent,
+                    check=True)
+                print(f"Staging modified file '{file}'")
+                subprocess.run(["git", "commit", "-m", f"{file}\r\rModified the file '{file}'"], 
+                    cwd=Path(__file__).parent,
+                    check=True)
+                print(f"Committed modifed file '{file}'")
+    except subprocess.CalledProcessError as error :
+        print(error)
+    # Sphinx
+    return redirect("sphinx", path=path)
+
+def sphinx(request, path):
+    """\
+    Sphinx
+
+    Triggers sphinx build for the documentation.
+    """
+    path = Path(path)
+    root = Path(__file__).parent/"docs"
+    file = (root/path).resolve()
+    file = file.with_suffix(".rst")
+    sphinx_build(['-b','html','docs','data'], cwd=Path(__file__).parent)
+    return redirect("docpath", path=path)
