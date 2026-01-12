@@ -14,6 +14,11 @@ from . import views
 
 
 urlpatterns = [
+    path(
+        'compile/<slug:slug>/',
+        views.compile,
+        name='compile',
+    ),
     parx(
         r'^$',
         views.OverviewList.as_view(),

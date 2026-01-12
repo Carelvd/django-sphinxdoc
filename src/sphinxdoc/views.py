@@ -1,17 +1,22 @@
 """
 Views for django-shinxdoc.
-
 """
 import datetime
 import json
 import os.path
+import subprocess
+import pickle
+from pathlib import Path
 
 from django.conf import settings
 from django.contrib.auth.views import redirect_to_login
 from django.core.exceptions import ObjectDoesNotExist
 from django.core.exceptions import PermissionDenied
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, render, redirect
 from django.urls import reverse
+from django.http import JsonResponse, HttpResponse, HttpResponseForbidden, Http404
+from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.encoding import iri_to_uri
 from django.views.decorators.cache import cache_page
 from django.views import generic
 from django.views.static import serve
@@ -20,11 +25,13 @@ from haystack.views import SearchView
 from sphinxdoc.decorators import user_allowed_for_project
 from sphinxdoc.forms import ProjectSearchForm
 from sphinxdoc.models import Project, Document
+from django.template.response import TemplateResponse
+from django.http import JsonResponse, HttpResponse, HttpResponseForbidden
+import ansi2html
 
 
 BUILDDIR = os.path.join('_build', 'json')
 CACHE_MINUTES = getattr(settings, 'SPHINXDOC_CACHE_MINUTES', 5)
-
 
 # class Index(TemplateView):
     # template_name = "sphinxdoc/index.html"
@@ -231,13 +238,11 @@ class OverviewList(generic.TemplateView):
         qs = Project.objects.all().order_by('name')
         return [proj for proj in qs if proj.is_allowed(self.request.user)]
 
-
-
 def doctree(request, path = None):
     """\
     Doctree
 
-    Doctree accessa and package development
+    Doctree access and package development
     """
     path = Path(path) if path else Path("")
     root = Path(__file__).parent/"data"/"doctrees"
@@ -363,3 +368,30 @@ def sphinx(request, path):
     file = file.with_suffix(".rst")
     sphinx_build(['-b','html','docs','data'], cwd=Path(__file__).parent)
     return redirect("docpath", path=path)
+
+#admin_site.admin_view
+def compile(request, slug):
+    # is_safe_url(url = next, allowed_hosts=request.get_host())
+    next = iri_to_uri(request.GET['next']) if url_has_allowed_host_and_scheme(request.GET['next'], allowed_hosts=request.get_host()) else None
+    project = get_object_or_404(Project, slug=slug)
+    result = project.sphinx()
+    converter = ansi2html.Ansi2HTMLConverter()
+    if result.returncode == 0:
+        # print(result.stdout)
+        # print(converter.convert(result.stdout))
+        data = converter.convert(result.stdout, full=False)#.split("<body>")[1].split("</body>")[0]
+        # print(result.stdout)
+        # result.stdout = convert(result.stdout)
+    else:
+        # print(result.stderr)
+        # result.stderr = convert(result.stderr)
+        data = converter.convert(result.stderr, full=False)#.split("<body>")[1].split("</body>")[0]
+        # print(result.stderr)
+    context = {"slug": slug,
+               "project": project,
+               "command": result,
+               "data" : data,
+               "next": next}
+    return TemplateResponse(request, 'sphinxdoc/compile.html', context)
+
+

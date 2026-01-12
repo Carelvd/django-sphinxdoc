@@ -1,0 +1,34 @@
+<html>
+    <head>
+        <style>
+        /* ansi {display: inline-block} OR */
+        span.ansi1::after {
+            content: "\A"; /* The newline character */
+            white-space: pre; /* Ensures the browser respects the newline character */
+        } 
+        div.output {
+            border: grey 1px solid;
+        }
+        </style>
+    </head>
+    <body>
+        <main>
+    <h1><a href="{{ next }}">{{ project.name }}</a></h1>
+    <div>
+    <span class="ansi0">{{ command.args|join:" " }}</span>
+    </div>
+    <div class="output">
+    {# autoescape off #}
+    {{ data|safe }}
+    {# endautoescape #}
+    </div>
+    <div>
+    {% if command.returnCode is 0 %}
+    Success
+    {% else %}
+    Failure
+    {% endif %}
+    </div>
+    </main>
+    </body>
+</html>
