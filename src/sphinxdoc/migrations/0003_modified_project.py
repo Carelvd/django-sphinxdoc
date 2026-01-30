@@ -31,7 +31,7 @@ class Migration(migrations.Migration):
         migrations.AddField(
             model_name='project',
             name='root',
-            field=models.CharField(blank=True, help_text='Project local directory', max_length=255, validators=[sphinxdoc.validators.validate_relative_path]),
+            field=models.CharField(blank=True, help_text="Projects' root directory", max_length=255, validators=[sphinxdoc.validators.validate_relative_path]),
         ),
         migrations.RenameField(
             model_name='project',
@@ -41,12 +41,12 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='project',
             name='source',
-            field=models.CharField(default='docs', help_text='Relative path containing Sphinx source and <tt>conf.py</tt> (Default: `docs` ).', max_length=255, validators=[sphinxdoc.validators.validate_relative_path]),
+            field=models.CharField(default='docs', help_text='Relative path containing ReStructured Text and the Sphinx configuration file, <tt>conf.py</tt> (Default: `docs/` ).', max_length=255, validators=[sphinxdoc.validators.validate_relative_path]),
         ),
         migrations.AddField(
             model_name='project',
             name='target',
-            field=models.CharField(default='.sphinx', help_text='Relative path containing Sphinx output (Default: `.sphinx` )', max_length=255, validators=[sphinxdoc.validators.validate_relative_path]),
+            field=models.CharField(default='_build', help_text='Relative path containing Sphinx output (Default: `_build` )', max_length=255, validators=[sphinxdoc.validators.validate_relative_path]),
         ),
         migrations.AddField(
             model_name='project',

@@ -20,7 +20,6 @@ from django.core.management.base import BaseCommand, CommandError
 
 from sphinxdoc.models import Project, Document
 
-
 EXTENSION = '.fjson'
 SPECIAL_TITLES = {
     'genindex': 'General Index',

@@ -15,9 +15,9 @@ from . import views
 
 urlpatterns = [
     path(
-        'compile/<slug:slug>/',
-        views.compile,
-        name='compile',
+        'vcs/git-pull/<slug:slug>/',
+        views.git_pull,
+        name='git-pull',
     ),
     parx(
         r'^$',

@@ -11,7 +11,6 @@ the case, you should work through the `Django tutorial
 You also need `Haystack <http://haystacksearch.org>`_ for searching within the
 documentation.
 
-
 Installation
 ------------
 
@@ -59,6 +58,23 @@ Optional Settings
 
 Optional sphinxdoc settings in your ``settings.py``.
 
+``SPHINXDOC_PROJECT_ROOT``:
+    Provides the "library" path for all of ones documentation; overriding `BASE_DIR(or Path.cwd())/SPHINXDOC_DOCUMENTATION_DIR`.
+
+    .. note::
+
+        Setting `SPHINXDOC_TARGET_ROOT` and `SPHINXDOC_SOURCE_ROOT` to match is akin to simply setting `SPHINXDOC_PROJECT_ROOT`.
+
+``SPHINXDOC_TARGET_ROOT``:
+    Provides the "library" path of ones compiled documentation; overriding ``SPHINXDOC_PROJECT_ROOT``.
+
+    .. note::
+
+        Should `SPHINXDOC_TARGET_ROOT` match `SPHINXDOC_SOURCE_ROOT` (or `SPHINXDOC_PROJECT_ROOT` if `SPHINXDOC_SOURCE_ROOT` is not specified) then the built files are nested under `Project.source_path/[Project.target or SPHINXDOC_BUILD_DIR]`.
+
+``SPHINXDOC_SOURCE_ROOT``:
+    Provides the "library" path of ones uncompiled documentation; overriding ``SPHINXDOC_PROJECT_ROOT``.
+
 ``SPHINXDOC_CACHE_MINUTES``:
     Sets the length of the cache duration for sphinxdoc
     pages in minutes. If not set, defaults to 5 minutes. For caching to be
@@ -66,9 +82,12 @@ Optional sphinxdoc settings in your ``settings.py``.
     `cache framework <https://docs.djangoproject.com/en/dev/topics/cache/>`_
 
 ``SPHINXDOC_BUILD_DIR``:
-    Sets the name of target directory (within the project root) for the
-    sphinx builder and the sphinxdoc updater. If not set, defaults to
-    *_build*.
+    Sets the name of build directory (within the `Project.source_path`) for ones compiled documentation; used by the sphinx builder and the sphinxdoc updater. 
+    If not set, defaults to *_build*.
+
+``SPHINXDOC_DOCUMENTATION_DIR``:
+    Sets the name of default library directory; used if neither `SPHINXDOC_DOCUMENTATION[_(SOURCE)|(TARGET)]` are set.
+    If not set, defaults to *.sphinxdoc*.
 
 ``SPHINXDOC_PROTECTED_PROJECTS``
     A mapping of project slugs to lists of permissions indicating that users
@@ -78,6 +97,11 @@ Optional sphinxdoc settings in your ``settings.py``.
 ``SPHINXDOC_BASE_TEMPLATE``
     Overrides the default sphinxdoc base template ('base.html').
 
+``VERSION_CONTROL_CREDENTIALS`` 
+    Specifies the version control server credentials; currently supports github and gitlab. ::
+
+        VERSION_CONTROL_CREDENTIALS = { "git" : { "gitlab.com" : Path(BASE_DIR / 'gitlab.pat').read_text(),
+                                                  "github.com" : Path(BASE_DIR / 'github.pat').read_text() }}
 
 Add a project
 -------------
@@ -93,10 +117,19 @@ Slug:
     A sluggified version of the project name; will be generated
     automatically
 
-Path:
-    A file system path to the Sphinx project (where Sphinx’ ``conf.py`` is
-    located), e.g.: ``/path/to/project/docs``
+Root:
+    A relative path where the project is stored on disk; e.g.: ``/path/to/project``
 
+Source (Orig. Path):
+    A file system path, relative to `root`, to the Sphinx project sources (where Sphinx’ ``conf.py`` is
+    located), e.g.: ``docs`` (This is appended to the `root` hence ``/path/to/project/docs``).
+
+Target:
+    A file system path, relative to `root`, for the compiled Sphinx project e.g.: ``docs/_build`` (This is appended to the `root` hence ``/path/to/project/docs/_build``).
+
+.. note::
+
+    See the documentation for `Project.source_path` and `Project.target_path` to see the ultimate paths used in the sofware.
 
 Build & import the documentation
 --------------------------------

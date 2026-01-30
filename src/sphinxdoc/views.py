@@ -15,8 +15,6 @@ from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404, render, redirect
 from django.urls import reverse
 from django.http import JsonResponse, HttpResponse, HttpResponseForbidden, Http404
-from django.utils.http import url_has_allowed_host_and_scheme
-from django.utils.encoding import iri_to_uri
 from django.views.decorators.cache import cache_page
 from django.views import generic
 from django.views.static import serve
@@ -25,9 +23,7 @@ from haystack.views import SearchView
 from sphinxdoc.decorators import user_allowed_for_project
 from sphinxdoc.forms import ProjectSearchForm
 from sphinxdoc.models import Project, Document
-from django.template.response import TemplateResponse
 from django.http import JsonResponse, HttpResponse, HttpResponseForbidden
-import ansi2html
 
 
 BUILDDIR = os.path.join('_build', 'json')
@@ -369,29 +365,56 @@ def sphinx(request, path):
     sphinx_build(['-b','html','docs','data'], cwd=Path(__file__).parent)
     return redirect("docpath", path=path)
 
-#admin_site.admin_view
-def compile(request, slug):
-    # is_safe_url(url = next, allowed_hosts=request.get_host())
-    next = iri_to_uri(request.GET['next']) if url_has_allowed_host_and_scheme(request.GET['next'], allowed_hosts=request.get_host()) else None
+# @user_allowed_for_project
+def git_pull(request, slug):
+    """\
+    Git Pull
+
+    Pulls down the latest revision of a git repository for the given project.
+    
+    This view executes `git pull` in the project's directory and returns
+    the output as a JSON response.
+    """
     project = get_object_or_404(Project, slug=slug)
-    result = project.sphinx()
-    converter = ansi2html.Ansi2HTMLConverter()
-    if result.returncode == 0:
-        # print(result.stdout)
-        # print(converter.convert(result.stdout))
-        data = converter.convert(result.stdout, full=False)#.split("<body>")[1].split("</body>")[0]
-        # print(result.stdout)
-        # result.stdout = convert(result.stdout)
-    else:
-        # print(result.stderr)
-        # result.stderr = convert(result.stderr)
-        data = converter.convert(result.stderr, full=False)#.split("<body>")[1].split("</body>")[0]
-        # print(result.stderr)
-    context = {"slug": slug,
-               "project": project,
-               "command": result,
-               "data" : data,
-               "next": next}
-    return TemplateResponse(request, 'sphinxdoc/compile.html', context)
-
-
+    
+    if not project.repo:
+        return JsonResponse({
+            'success': False,
+            'error': 'No repository URL configured for this project'
+        }, status=400)
+    
+    try:
+        # Change to the project's directory and run git pull
+        result = subprocess.run(
+            ['git', 'pull'],
+            cwd=project.source_path,
+            capture_output=True,
+            text=True,
+            timeout=60  # 60 second timeout
+        )
+        
+        if result.returncode == 0:
+            return JsonResponse({
+                'success': True,
+                'stdout': result.stdout,
+                'stderr': result.stderr
+            })
+        else:
+            return JsonResponse({
+                'success': False,
+                'error': 'Git pull failed',
+                'stdout': result.stdout,
+                'stderr': result.stderr,
+                'returncode': result.returncode
+            }, status=500)
+            
+    except subprocess.TimeoutExpired:
+        return JsonResponse({
+            'success': False,
+            'error': 'Git pull timed out after 60 seconds'
+        }, status=500)
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': f'Unexpected error: {str(e)}'
+        }, status=500)

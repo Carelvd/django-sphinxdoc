@@ -14,16 +14,18 @@
     <body>
         <main>
     <h1><a href="{{ next }}">{{ project.name }}</a></h1>
-    <div>
+    <!-- <div>
     <span class="ansi0">{{ command.args|join:" " }}</span>
-    </div>
+    </div> -->
     <div class="output">
     {# autoescape off #}
-    {{ data|safe }}
+    {{ data.compile_log|safe }}
+    <br/>
+    {{ data.compile }}
     {# endautoescape #}
     </div>
     <div>
-    {% if command.returnCode is 0 %}
+    {% if data.compile.returnCode is 0 %}
     Success
     {% else %}
     Failure
