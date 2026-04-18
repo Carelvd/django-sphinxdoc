@@ -37,9 +37,9 @@ def validate_repository_url(value):
         return  # Empty repository URL is allowed
     
     # Import here to avoid circular imports
-    from .vcs.git import validate_git_url
+    from .vcs.git import Repository as GitRepository # Origianlly: validate_git_url
     
-    if not validate_git_url(value):
+    if not GitRepository.validate(value):
         raise ValidationError(
             f'{value}: Invalid repository URL. '
             'Must be a valid Git URL (HTTPS, SSH, or Git protocol).'
@@ -84,32 +84,6 @@ def validate_branch_name(value):
         raise ValidationError(
             f'{value}: Branch name too long. Maximum 100 characters allowed.'
         )
-
-# Orig. From admin.py
-def validate_git_url(url):
-    """
-    Validate if URL is a valid Git repository URL.
-    
-    Args:
-        url (str): Repository URL
-        
-    Returns:
-        bool: True if URL is valid
-    """
-    if not url:
-        return False
-    # Check URL patterns
-    git_patterns = [
-        r'^https?://',  # HTTP/HTTPS
-        r'^git@',       # SSH
-        r'^ssh://',     # SSH protocol
-        r'^git://',     # Git protocol
-    ]
-    import re
-    for pattern in git_patterns:
-        if re.match(pattern, url):
-            return True
-    return False
 
 def parse_git_url(url):
     """
