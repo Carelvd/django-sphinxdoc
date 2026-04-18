@@ -47,7 +47,8 @@ class Project(models.Model):
     repo = models.URLField("repository", db_column="repository", max_length=255, blank=True,
         validators = [validators.URLValidator(schemes=["http","https","git"])], # TODO: Provide support for SVN, CVS, HG and such aswell
         help_text=_('Project repository URL.'))
-    #branch = models.CharField(max_length=100, blank=True, null=True,
+    # token = models.CharField("token") # TODO: Add project specific tokens
+    # branch = models.CharField(max_length=100, blank=True, null=True,
     #    help_text=_('Git branch or tag to checkout (leave empty for default branch).'))
     root = models.CharField(max_length=255, blank=True, null=False,
         validators = [validate_relative_path],
@@ -72,7 +73,10 @@ class Project(models.Model):
         return self.name
 
     def __str__(self):
-        return f"{self.name}"
+        if repo:= self.repository:
+            if branch:= repo.current_branch:
+                return f"{self.name} <{branch}>" 
+        return f"{self.name}" 
 
     def __repr__(self):
         return f"{self.slug}({self.root})"
@@ -80,6 +84,7 @@ class Project(models.Model):
     @property
     def updated(self): # TODO: Formalize or abandon this attribute
         return "Not implemented"
+    
     @updated.setter
     def update(self, value):
         logger.info(f"Ignoring {value}")
@@ -100,7 +105,7 @@ class Project(models.Model):
             root = getattr(settings, 'SPHINXDOC_PROJECT_ROOT', getattr(settings, 'BASE_DIR', Path.cwd()))
             if root == getattr(settings, 'BASE_DIR', Path.cwd()):
                 root = root / getattr(settings, "SPHINXDOC_DIR", SPHINXDOC_DOCUMENTATION_DIR)
-            print(f"common root: {root}")
+            # print(f"common root: {root}")
             return root
         else :
             return None
@@ -115,7 +120,7 @@ class Project(models.Model):
         """
         root = self.common_path or getattr(settings, 'SPHINXDOC_SOURCE_ROOT', getattr(settings, 'SPHINXDOC_PROJECT_ROOT', getattr(settings, 'BASE_DIR', Path.cwd()))) 
         root = (root / getattr(settings, "SPHINXDOC_DIR", SPHINXDOC_DOCUMENTATION_DIR) if root == getattr(settings, 'BASE_DIR', Path.cwd()) else root) / self.root
-        print(f"Source Root: {root}")
+        # print(f"Source Root: {root}")
         return root
 
     @property
@@ -137,7 +142,7 @@ class Project(models.Model):
         root = self.source_root
         path = Path(self.source)
         path = path if path.is_absolute() else  root / path
-        print(f"source: {path}")
+        # print(f"source: {path}")
         return path
         # Orig.: return os.path.join(self.root, BUILDDIR, 'doctrees')
 
@@ -162,7 +167,7 @@ class Project(models.Model):
             root = root / self.root
             path = Path(self.target) if self.target and self.target != self.source else Path(self.source) / getattr(settings, "SPHINXDOC_BUILD_DIR", SPHINXDOC_BUILD_DIR) # Build directory is nested where the source and target paths are the same
             path = path if path.is_absolute() else  root / path
-            print(f"target: {path} (Common)")
+            # print(f"target: {path} (Common)")
         else:
             root = getattr(settings, 'SPHINXDOC_TARGET_ROOT', getattr(settings, 'SPHINXDOC_PROJECT_ROOT', getattr(settings, 'BASE_DIR', Path.cwd()))) # TODO: Document this setting
             if root == getattr(settings, 'SPHINXDOC_PROJECT_ROOT', getattr(settings, 'BASE_DIR', Path.cwd())): # determines if the build directory is to be nested under the source directory
@@ -173,7 +178,7 @@ class Project(models.Model):
                 root = (root / getattr(settings, "SPHINXDOC_DOCUMENTATION_DIR", SPHINXDOC_DOCUMENTATION_DIR) if root == getattr(settings, 'BASE_DIR', Path.cwd()) else root) / self.root
                 path = Path(self.target) # self.target and self.source are ignored in this case
                 path = path if path.is_absolute() else root
-            print(f"target: {path} (Uncommon)")
+            # print(f"target: {path} (Uncommon)")
         return path
         # # Orig.: return os.path.join(self.root, BUILDDIR, 'json')
 
@@ -193,7 +198,15 @@ class Project(models.Model):
     
     @property
     def git(self):
-        return GitRepository(self.repo,self.source_root) if self.repo else None
+        """\
+        Returns a GitRepository instance
+        """
+        return GitRepository(self.repo, self.source_root) if self.repo else None
+
+    @property
+    def repository(self):
+        # return {"git": GitRepository, "svn": self.SubversionRepository}[self.repo.protocol](self.repo, self.source_root) # TODO: Support for various version control systems
+        return self.git
 
     def is_allowed(self, user):
         """\
@@ -212,11 +225,18 @@ class Project(models.Model):
         return True
 
     def save(self, *args, **kwargs):
-        if pk := self.pk: # Retrieve existing record; if it exists
-            try:
-                record = Project.objects.get(pk=pk)
-            except Project.DoesNotExist:
-                record = None
+        try:
+            record = Project.objects.get(pk=self.pk) if self.pk else None
+        except Project.DoesNotExist:
+            record = None
+        # print(f"======save======")
+        # print(f"Original record: {record}")
+        # print(f"Modified record: {self.branch}")
+        # if pk := self.pk: # Retrieve existing record; if it exists
+        #     try:
+        #         record = Project.objects.get(pk=pk)
+        #     except Project.DoesNotExist:
+        #         record = None
         if slug := self.slug or slugify(self.name): # Set the slug if not provided
             cntr = 0
             self.slug = slug
@@ -235,30 +255,35 @@ class Project(models.Model):
         # Save the instance first
         super().save(*args, **kwargs)
         # Project Actions
+        # ---------------
         try:
-            from .tasks import clone_project_repository, update_repository, move_repository
+            # from .tasks import clone_repository, update_repository, move_repository
             if record:
-                if record.source_path != self.source_path:
-                    logger.info(f"Scheduling move operation for project {self.slug} source: {record.source_path} -> {self.source_path}")
-                    move_repository(self.pk, record.source_path, self.root)
+                # if record.source_path != self.source_path:
+                #     logger.info(f"Scheduling move operation for project {self.slug} source: {record.source_path} -> {self.source_path}")
+                #     move_repository(self.pk, record.source_path, self.root)
                 if record.target_path != self.target_path:
                     logger.info(f"Scheduling move operation for project {self.slug} builds: {record.target_path} -> {self.target_path}")
                     pass # trigger a move
-                if record.repo != self.repo:
-                    logger.info(f"Scheduling change of origin repository for project {self.slug}: {record.repo} -> {self.repo}")
-                    clone_repository(self.pk, delete = True)
-                else:
-                    logger.info(f"Scheduling update operation for project {self.slug}")
-                    update_repository(self.pk)
+                # if repo, branch := record.repo, self.repo:
+                #     logger.info(f"Scheduling change of origin repository for project {self.slug}: {record.repo} -> {self.repo}")
+                #     clone_repository(self.pk, delete = True)
+                if (target := getattr(self, "branch")) & (source := self.repository and self.repository.current_branch) & source!=target:
+                        print(f"Switching Branches (Data stapled by the ModelAdmin)")
+                        print(f"Original Branch: {source}")
+                        print(f"Modified Branch: {target}")                        
+                        # self.repostiroy.switch(branch)
+                        logger.info(f"{self} switched branches from {source} to {target}")
+                logger.info(f"Scheduling update operation for project {self.slug}")
+                # update_repository(self.pk)
             else:
                 if self.repo:
                     logger.info(f"Scheduling cloning of repository for project {self.slug}: {self.repo}")
-                    clone_repository(self.pk)
+                    # clone_repository(self.pk)
         except ImportError as e:
             logger.error(f"Failed to import tasks module: {e}")
         except Exception as e:
             logger.error(f"Error triggering repository operations for project {self.slug}: {e}")
-
     
     def clean(self):
         """\
@@ -270,10 +295,11 @@ class Project(models.Model):
         
         # Validate repository URL
         if self.repo:
-            from .validators import validate_repository_url
-            validate_repository_url(self.repo)
+            GitRepository.validate(self.repo)
         
         # Validate branch name
+        if branch:= getattr(self, "branch", None):
+            print(f"Clean: {branch}")
         # if self.branch:
         #     from .validators import validate_branch_name
         #     validate_branch_name(self.branch)
@@ -284,7 +310,7 @@ class Project(models.Model):
     def delete(self, *args, **kwargs):
         self.deleted = timezone.now()
         self.save()
-        super().delete(*args, **kwargs)
+        return super().delete(*args, **kwargs)
 
     def compile(self):
         """\
@@ -310,6 +336,74 @@ class Project(models.Model):
             # print(result.stderr)
         data["import"] = self.import_documents()
         return data
+
+    def compile_stream(self):
+        """\
+        Compile Stream
+        Generator that streams the output of the compilation process step by step.
+        """
+        yield "Deleting old documents...\n"
+        try:
+            self.delete_documents()
+            yield "Done.\n\n"
+        except Exception as e:
+            yield f"Error deleting documents: {e}\n"
+            return
+
+        yield "Running sphinx-build...\n"
+        yield from self._sphinx_stream()
+
+        yield "\nImporting built documents into database...\n"
+        try:
+            self.import_documents()
+            yield "Done.\n"
+        except Exception as e:
+            yield f"Error importing documents: {e}\n"
+
+    def _sphinx_stream(self, venv=None):
+        cmd = 'sphinx-build'
+        if venv := venv or self.python_path:
+            cmd = (venv/"Scripts"/cmd)
+            yield f"Virtual Environment: {venv}\nVirtual Command: {cmd}\n"
+        cmd = [
+            str(cmd),
+            '-n',
+            '-b',
+            'json',
+            '-d',
+            f"{self.target_path / 'doctrees'}",
+            f"{self.source_path}",
+            f"{self.target_path / 'json'}",
+        ]
+        
+        yield f"Executing: {' '.join(cmd)}\n"
+        try:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            char_buf = []
+            while True:
+                char = process.stdout.read(1)
+                if not char:
+                    if char_buf:
+                        yield ''.join(char_buf)
+                    break
+                char_buf.append(char)
+                if char in ('\n', '\r'):
+                    yield ''.join(char_buf)
+                    char_buf = []
+            
+            process.wait()
+            if process.returncode == 0:
+                yield "\nsphinx-build finished successfully.\n"
+            else:
+                yield f"\nsphinx-build failed with exit code {process.returncode}.\n"
+        except Exception as error:
+            yield f"\nUnhandled Exception: {error}\n"
 
     def sphinx(self, venv = None):
         cmd = 'sphinx-build'
@@ -404,6 +498,9 @@ class Project(models.Model):
     #     except Exception as e:
     #         logger.error(f"Error moving repository for project {self.slug}: {e}")
     #         return False
+
+    # def get_absolute_url(self):
+    #     return reverse('doc-detail', kwargs={'slug': self.project.slug, 'path': self.path})
 
 class Document(models.Model):
     """\

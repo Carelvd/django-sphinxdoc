@@ -11,6 +11,7 @@ python-gitlab
 import subprocess
 import logging
 import os
+import re
 from pathlib import Path
 from urllib.parse import urlparse
 from django.conf import settings
@@ -178,6 +179,31 @@ class Repository:
             return None
 
     @property
+    def branches(self):
+        """\
+        Lists all of the branches of the git repository.
+        
+        Returns:
+            str[] or []: Names of the 
+        """
+        if not self.path.exists() or not (self.path / '.git').exists():
+            return None
+        try:
+            result = subprocess.run(
+                ['git', 'branch'],
+                cwd=str(self.path),
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            if result.returncode == 0:
+                return [line.strip()[1:].strip() if "*" in line.strip() else line.strip() for line in result.stdout.split("\n") if line.strip()]
+            return None
+        except Exception as e:
+            logger.error(f"Error getting current branch: {e}")
+            return None
+
+    @property
     def cloned(self):
         """\
         Cloned
@@ -221,7 +247,49 @@ class Repository:
     #         logger.error(f"Error cloning repository for project {self.slug}: {e}")
     #         return False
     
-    def clone(self, timeout = None):
+    def _stream_command(self, cmd, timeout=None):
+        cwd = str(self.path) if self.path.exists() else None
+        safe_cmd = []
+        for arg in cmd:
+            if "://" in arg and "@" in arg:
+                safe_cmd.append(re.sub(r'://.*?@', '://***@', arg))
+            else:
+                safe_cmd.append(arg)
+        yield f"Executing: {' '.join(safe_cmd)}\n"
+        try:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                env=self.environment,
+                cwd=cwd
+            )
+            char_buf = []
+            while True:
+                char = process.stdout.read(1)
+                if not char:
+                    if char_buf:
+                        yield ''.join(char_buf)
+                    break
+                char_buf.append(char)
+                if char in ('\n', '\r'):
+                    yield ''.join(char_buf)
+                    char_buf = []
+            
+            process.wait(timeout=timeout or self.timeout)
+            if process.returncode == 0:
+                yield "\nDone: Success\n"
+            else:
+                yield f"\nDone: Failed with return code {process.returncode}\n"
+        except subprocess.TimeoutExpired:
+            process.kill()
+            yield f"\nError: Operation timed out after {timeout or self.timeout} seconds\n"
+        except Exception as e:
+            yield f"\nError: {e}\n"
+
+    def clone(self, timeout=None, stream=False):
         """\
         Clone
 
@@ -229,10 +297,14 @@ class Repository:
         
         Args:
             timeout (int): Timeout in seconds
+            stream (bool): If True, yields progress lines.
             
         Returns:
-            tuple: (success: bool, message: str)
+            tuple: (success: bool, message: str) or generator if stream=True
         """
+        if stream:
+            return self._clone_stream(timeout)
+            
         if self.path.exists() and (self.path / '.git').exists():
             return False, "Repository already exists"        
         try:
@@ -269,7 +341,18 @@ class Repository:
             logger.error(error_msg)
             return False, error_msg
 
-    def pull(self, timeout=180):
+    def _clone_stream(self, timeout=None):
+        if self.path.exists() and (self.path / '.git').exists():
+            yield "Failed: Repository already exists\n"
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        cmd = ['git', 'clone', '--recurse-submodules', '--progress']            
+        if self.branch:
+            cmd.extend(['--branch', self.branch, '--single-branch'])            
+        cmd.extend([self.repository, str(self.path)])
+        yield from self._stream_command(cmd, timeout)
+
+    def pull(self, timeout=180, stream=False):
         """\
         Pull
 
@@ -277,10 +360,14 @@ class Repository:
         
         Args:
             timeout (int): Timeout in seconds
+            stream (bool): If True, yields progress lines.
             
         Returns:
-            tuple: (success: bool, message: str)
+            tuple: (success: bool, message: str) or generator if stream=True
         """
+        if stream:
+            return self._pull_stream(timeout)
+            
         if not self.path.exists() or not (self.path / '.git').exists():
             return False, "Repository is not cloned"        
         try:
@@ -312,6 +399,17 @@ class Repository:
             error_msg = f"Error pulling changes: {e}"
             logger.error(error_msg)
             return False, error_msg
+
+    def _pull_stream(self, timeout=180):
+        if not self.path.exists() or not (self.path / '.git').exists():
+            yield "Failed: Repository is not cloned\n"
+            return
+        cmd = ['git', 'pull', '--progress', 'origin']
+        if self.branch:
+            cmd.append(self.branch)
+        else:
+            cmd.append('HEAD')
+        yield from self._stream_command(cmd, timeout)
 
     # def update_repository(self):
     #     """Update repository with latest changes."""
@@ -399,3 +497,27 @@ class Repository:
             logger.error(f"Error checking repository status: {e}")
             return False
 
+    @classmethod
+    def validate(cls, url): # Orig. From admin.py
+        """\
+        Validate
+
+        Validate if URL is a valid Git repository URL.
+        
+        Args:
+            url (str): Repository URL
+            
+        Returns:
+            bool: True if URL is valid
+        """
+        if url:
+            patterns = [
+                r'^https?://',  # HTTP/HTTPS
+                r'^git@',       # SSH
+                r'^ssh://',     # SSH protocol
+                r'^git://',     # Git protocol
+            ]
+            for pattern in patterns:
+                if re.match(pattern, url):
+                    return True
+        return False

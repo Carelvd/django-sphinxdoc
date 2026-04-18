@@ -10,6 +10,7 @@ Contents:
     quickstart
     autobuild
     change_appearance
+    hosting
     ref/index
 
 Django:SphinxDoc is a Django framework extention for documenting projects that utilize the Sphinx documentation system.

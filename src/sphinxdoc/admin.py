@@ -13,8 +13,8 @@ from django.http import HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.shortcuts import get_object_or_404, render, redirect
 from django.conf import settings
-
-from sphinxdoc.models import Project, Document
+from django import forms
+from .models import Project, Document
 
 # class SphinxDocAdminSite(admin.AdminSite):
 #     """\
@@ -40,9 +40,28 @@ from sphinxdoc.models import Project, Document
 #
 # sphinx_doc_admin_site = SphinxDocAdminSite(name='custom_admin')
 
+class ProjectForm(forms.ModelForm):
+    """\
+    Note: this makes provision for electing abranch based upon those reported by git.
+    """
+    branch = forms.ChoiceField(required=False)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if repo := self.instance.repository:
+            self.fields['branch'].choices = [
+                (branch, branch) for index, branch in enumerate(repo.branches) # Note: Assumes branches are ordered; otherwise use their hash for an id.
+            ]
+            if leaf := repo.current_branch:
+                if leaf in map(lambda item: item[-1], self.fields['branch'].choices): 
+                    self.fields['branch'].initial = next(index for index, value in self.fields['branch'].choices if value == leaf)
+        else:
+            self.fields['branch'].choices = []
+            self.fields['branch'].widget = forms.HiddenInput()
+
 class ProjectAdmin(admin.ModelAdmin):
     """Admin interface for :class:`~sphinxdoc.models.Project`."""
-    list_display = ('name', 'source_path', 'target_path', 'repository', 'operations') if hasattr(settings,"VERSION_CONTROL_CREDENTIALS") else  ('name', 'source_path', 'target_path', 'operations') #, 'repository_status', 'last_sync_display', 'root')
+    list_display = ('__str__', 'source_path', 'target_path', 'repository', 'operations') if hasattr(settings,"VERSION_CONTROL_CREDENTIALS") else  ('name', 'source_path', 'target_path', 'operations') #, 'repository_status', 'last_sync_display', 'root')
     list_filter = ('created', 'deleted') # 'last_sync', 
     search_fields = ('name', 'slug', 'repo') # , 'root'
     prepopulated_fields = {'slug': ('name',), 'root': ('name',)}
@@ -50,13 +69,14 @@ class ProjectAdmin(admin.ModelAdmin):
     actions = ('build',)
     # actions = ['clone_repositories', 'update_repositories', 'sync_repositories']
     readonly_fields = ('root_path', 'source_path', 'target_path', )
+    form = ProjectForm
     
     fieldsets = (
         (None, {
             'fields': ('name', 'slug')
         }),
         ('Repository', {
-            'fields': ('repo', ),
+            'fields': ('repo', 'branch'),
         }),
         ('Paths', {
             'fields': ('root', 'root_path', 'source', 'source_path', 'target','target_path'), 
@@ -73,6 +93,21 @@ class ProjectAdmin(admin.ModelAdmin):
         Root Path
         """
         return obj.common_path or obj.source_root
+    
+    # def get_form(self, request, *args, obj=None, **kvps):
+    #     form = super().get_form(request, *args, obj = obj, **kvps)
+    #     # Optional: Further manipulation of form fields based on obj
+    #     return form
+
+    def save_model(self, request, record, form, change):
+        # Callback-style action based on combobox value
+        record.branch = form.cleaned_data.get('branch') # Staples the branch to the record.
+        # print(obj.branch)
+        # if selected_value:
+        #     # Perform action: e.g., update obj or call external API
+        #     obj.apply_selection(selected_value)
+        return super().save_model(request, record, form, change) # Note: replacing change with True triggers a save; handy for debugging.
+
     # def repository_status(self, obj):
     #     """Display repository status with visual indicators."""
     #     if not obj.repo:
@@ -204,15 +239,19 @@ class ProjectAdmin(admin.ModelAdmin):
         # context = {}
         # return render(request, 'admin/sphinxdoc/project/compile.html', context)
         # is_safe_url(url = next, allowed_hosts=request.get_host())
-        next = iri_to_uri(request.GET['next']) if url_has_allowed_host_and_scheme(request.GET['next'], allowed_hosts=request.get_host()) else None
+        # next = iri_to_uri(request.GET['next']) if url_has_allowed_host_and_scheme(request.GET['next'], allowed_hosts=request.get_host()) else None
         project = get_object_or_404(Project, pk=pk)
-        print(self, project)
-        data = project.compile()
-        context = {
-                "project": project,
-                "data" : data,
-                "next": next}
-        return TemplateResponse(request, 'admin/sphinxdoc/project/compile.html', context)
+        generator = project.compile_stream()
+        return self._create_stream_response(f"Building {project.name}", generator)
+        # Originally:
+        #print(self, project)
+        #data = project.compile()
+        #context = {
+        #        "project": project,
+        #        "data" : data,
+        #        "next": next}
+        #return TemplateResponse(request, 'admin/sphinxdoc/project/compile.html', context)
+
 
     # def actions(self, obj):
     #     """Display action buttons for repository operations."""
@@ -253,65 +292,106 @@ class ProjectAdmin(admin.ModelAdmin):
     #     context = {}
     #     return render(request, 'admin/sphinxdoc/project/test.html', context)
 
+    def _create_stream_response(self, title, generator):
+        from django.http import StreamingHttpResponse
+        import json
+        from django.urls import reverse
+        
+        def stream():
+            yield "<!DOCTYPE html>\n<html>\n<head>\n"
+            yield f"<title>{title}</title>\n"
+            yield "<style>\n"
+            yield "body { font-family: 'Consolas', 'Courier New', monospace; background: #1e1e1e; color: #d4d4d4; margin: 0; padding: 20px; }\n"
+            yield "a { color: #4fc1ff; text-decoration: none; }\n"
+            yield "a:hover { text-decoration: underline; }\n"
+            yield "#log { white-space: pre; font-size: 14px; line-height: 1.5; padding: 10px; background: #000; border-radius: 5px; border: 1px solid #333; min-height: 80vh; overflow-x: auto; }\n"
+            yield ".container { max-width: 1200px; margin: 0 auto; }\n"
+            yield ".header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }\n"
+            yield "</style>\n"
+            yield "</head>\n<body>\n"
+            yield '<div class="container">\n'
+            
+            back_url = reverse('admin:sphinxdoc_project_changelist')
+            yield f'<div class="header">\n<h2>{title}</h2>\n'
+            yield f'<a href="{back_url}">&larr; Return to Project List</a>\n</div>\n'
+            
+            yield '<div id="log"></div>\n'
+            yield '<script>\n'
+            yield 'var log = document.getElementById("log");\n'
+            yield 'var lineSpan = document.createElement("span");\n'
+            yield 'log.appendChild(lineSpan);\n'
+            yield 'function append(text) {\n'
+            yield '    for (var i = 0; i < text.length; i++) {\n'
+            yield '        var c = text[i];\n'
+            yield '        if (c === "\\r") {\n'
+            yield '            lineSpan.textContent = "";\n'
+            yield '        } else if (c === "\\n") {\n'
+            yield '            lineSpan.textContent += "\\n";\n' # append newline visually
+            yield '            lineSpan = document.createElement("span");\n'
+            yield '            log.appendChild(lineSpan);\n'
+            yield '        } else {\n'
+            yield '            lineSpan.textContent += c;\n'
+            yield '        }\n'
+            yield '    }\n'
+            yield '    window.scrollTo(0, document.body.scrollHeight);\n'
+            yield '}\n'
+            yield '</script>\n'
+            
+            yield " " * 1024 + "\n"
+            
+            try:
+                for chunk in generator:
+                    encoded_chunk = json.dumps(chunk)
+                    yield f"<script>append({encoded_chunk});</script>\n"
+                    yield " " * 256 + "\n"
+            except Exception as e:
+                yield f"<script>append({json.dumps(str(e))});</script>\n"
+            
+            yield '<br><br><div style="text-align: center;">\n'
+            yield f'<a href="{back_url}" style="display: inline-block; padding: 10px 20px; background: #007acc; color: white; border-radius: 3px;">Return to Admin</a>\n'
+            yield '</div>\n</div>\n</body>\n</html>\n'
+
+        return StreamingHttpResponse(stream())
+
     def git_clone_view(self, request, pk):
         """\
         GIT: Clone 
 
-        Clone the specified repository
+        Clone the specified repository and stream output.
         """
         try:
             if project := self.get_object(request, pk):
                 if repo:= project.git:
-                    # from .tasks import clone_project_repository
-                    result, message =repo.clone()
-                    if result:
-                        self.message_user(request, f"{project.name} successfully cloned.", messages.SUCCESS)
-                    else:
-                        self.message_user(request, f"{project.name} failed to clone.", messages.ERROR)
-                    # result = clone_project_repository(project.id)    
-                    # if result['success']:
-                    #     self.message_user(request, f"Repository cloned successfully for {project.name}.", messages.SUCCESS)
-                    # else:
-                    #     self.message_user(request, f"Failed to clone repository: {result['message']}", messages.ERROR)
+                    # Return a streaming response that consumes the clone generator
+                    generator = repo.clone(stream=True)
+                    return self._create_stream_response(f"Cloning {project.name}", generator)
                 else:
-                    self.message_user(request, f'{project.name} has no assosciated repository attribute.', messages.ERROR)
+                    self.message_user(request, f'{project.name} has no associated repository attribute.', messages.ERROR)
             else:
-                self.message_user(request, f'There is not project with that primary key', messages.ERROR)
+                self.message_user(request, f'There is no project with that primary key', messages.ERROR)
         except Exception as e:
             self.message_user(request, f"Error cloning repository: {e}", messages.ERROR)
-        finally:
-            return HttpResponseRedirect(reverse('admin:sphinxdoc_project_changelist'))
+        
+        return HttpResponseRedirect(reverse('admin:sphinxdoc_project_changelist'))
 
     def git_pull_view(self, request, pk):
         """\
-        GIT:Pull
-
-        Pull down latest revision for current branch
+        GIT: Pull
+        Pull down latest revision for current branch and stream output.
         """
         try:
             if project := self.get_object(request, pk):
                 if repo:= project.git:
-                    #from .tasks import update_project_repository
-                    # result = update_project_repository(project.id)
-                    result, message = repo.pull()
-                    if result:
-                        self.message_user(request, f"{project.name} successfully updated.", messages.SUCCESS)
-                    else:
-                        self.message_user(request, f"{project.name} failed to update.", messages.ERROR)
-                    # if result['success']:
-                    #     self.message_user(request, f"Repository updated successfully for {project.name}.", messages.SUCCESS)
-                    # else:
-                    #     self.message_user(request, f"Failed to update repository: {result['message']}", messages.ERROR)
-                    #         if not project.repo:
-                    # self.message_user(request, 'Project has no repository URL configured.', messages.ERROR)
+                    # Return a streaming response that consumes the pull generator
+                    generator = repo.pull(stream=True)
+                    return self._create_stream_response(f"Pulling {project.name}", generator)
                 else:
-                    self.message_user(request, f'{project.name} has no assosciated repository attribute.', messages.ERROR)
+                    self.message_user(request, f'{project.name} has no associated repository attribute.', messages.ERROR)
             else:
-                self.message_user(request, f'There is not project with that primary key', messages.ERROR)
+                self.message_user(request, f'There is no project with that primary key', messages.ERROR)
         except Exception as e:
             self.message_user(request, f"Error updating repository: {e}", messages.ERROR)        
-        finally:
-            return HttpResponseRedirect(reverse('admin:sphinxdoc_project_changelist'))
+        return HttpResponseRedirect(reverse('admin:sphinxdoc_project_changelist'))
 
     # Bulk actions
     
