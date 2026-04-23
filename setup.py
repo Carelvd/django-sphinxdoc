@@ -15,6 +15,7 @@ setup(
     install_requires=[
         'Django>=2.0',
         'django-haystack>=2.8.0',
+        'ansi2html>=1.9.2',
     ],
     packages=find_packages(where='src'), # , exclude=('tests',)
     package_dir={'': 'src'},

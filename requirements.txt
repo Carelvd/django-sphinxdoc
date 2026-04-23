@@ -1,2 +1,4 @@
 Django>=2.0
 django-haystack>=2.8.0
+# This is to support compilation notices
+ansi2html
