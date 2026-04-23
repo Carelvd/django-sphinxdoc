@@ -28,7 +28,7 @@ def validate_relative_path(value):
                 print(match)
             else:
                 raise ValidationError(f'{value}: Valid relative path required e.g. a/b/c')
-        else : 
+        else :
             raise ValidationError(f'{value}: Valid relative path required e.g. a/b/c')
 
 def validate_repository_url(value):

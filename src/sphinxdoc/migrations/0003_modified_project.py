@@ -41,7 +41,7 @@ class Migration(migrations.Migration):
         migrations.AlterField(
             model_name='project',
             name='source',
-            field=models.CharField(default='docs', help_text='Relative path containing ReStructured Text and the Sphinx configuration file, <tt>conf.py</tt> (Default: `docs/` ).', max_length=255, validators=[sphinxdoc.validators.validate_relative_path]),
+            field=models.CharField(default='docs', help_text='Relative path containing ReStructured Text and the Sphinx configuration file, <tt>conf.py</tt> (Default: `docs/` ).', max_length=255, blank=True, null=True, validators=[sphinxdoc.validators.validate_relative_path]),
         ),
         migrations.AddField(
             model_name='project',

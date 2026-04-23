@@ -53,7 +53,7 @@ class Project(models.Model):
     root = models.CharField(max_length=255, blank=True, null=False,
         validators = [validate_relative_path],
         help_text=_("Projects' root directory"))
-    source = models.CharField(max_length=255, default="docs", null=False, 
+    source = models.CharField(max_length=255, default="docs", null=True, blank=True,
         validators = [validate_relative_path],
         help_text=_('Relative path containing ReStructured Text and the Sphinx configuration file, <tt>conf.py</tt> (Default: `docs/` ).'))
     target = models.CharField(max_length=255, default=SPHINXDOC_BUILD_DIR, null=False, # Strictly speaking this can be null/empty
