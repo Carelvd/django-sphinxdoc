@@ -3,10 +3,10 @@ VCS:Git
 
 This provide a class that wraps the underlying git calls executed through subprocess intoa  convenient class.
 
-There are some libraries that also perform this including :
+The following libraries are to be reviewed :
 
-GitPython
-python-gitlab
+  - GitPython
+  - python-gitlab
 """
 import subprocess
 import logging
